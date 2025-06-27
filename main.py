@@ -30,7 +30,7 @@ app = FastAPI()
 @dp.message(Command("status"))
 async def cmd_status(msg: types.Message):
     problems = await zbx.call("problem.get", {"output": ["severity"]})
-    sev_map = {0: "Not", 1: "Info", 2: "Warning", 3: "Average", 4: "High", 5: "Critical"}
+    sev_map = {0: "Не классифицировано", 1: "Информация", 2: "Предупреждение", 3: "Средняя", 4: "Высокая", 5: "Критическая"}
     counts = {name: 0 for name in sev_map.values()}
     for pr in problems:
         counts[sev_map[int(pr["severity"])]] += 1

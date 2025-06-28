@@ -4,6 +4,7 @@ ZBX_URL   = os.getenv("ZABBIX_URL")
 ZBX_USER  = os.getenv("ZABBIX_USER")
 ZBX_PASS  = os.getenv("ZABBIX_PASS")
 ZBX_TOKEN = os.getenv("ZABBIX_TOKEN")
+ZBX_VERIFY_SSL = os.getenv("ZABBIX_VERIFY_SSL", "true").lower() in ("1", "true", "yes")
 
 @functools.lru_cache()
 def get_token() -> str | None:
@@ -18,7 +19,7 @@ def get_token() -> str | None:
         "params":  {"user": ZBX_USER, "password": ZBX_PASS},
         "id":      1,
     }
-    r = httpx.post(ZBX_URL, json=payload, verify=False)
+    r = httpx.post(ZBX_URL, json=payload, verify=ZBX_VERIFY_SSL)
     try:
         data = r.json()
     except ValueError:
@@ -56,7 +57,7 @@ async def call(method: str, params: dict):
     else:                              # sessionid
         payload["auth"] = token
 
-    async with httpx.AsyncClient(verify=False, headers=headers) as c:
+    async with httpx.AsyncClient(verify=ZBX_VERIFY_SSL, headers=headers) as c:
         r = await c.post(ZBX_URL, json=payload)
 
     try:
@@ -89,7 +90,7 @@ async def chart_png(itemid: int, period: int = 3600) -> bytes:
         "name":      ""            # без заголовка
     }
     headers = {"Authorization": f"Bearer {get_token()}"}  # токен в заголовке
-    async with httpx.AsyncClient(verify=False, headers=headers) as c:
+    async with httpx.AsyncClient(verify=ZBX_VERIFY_SSL, headers=headers) as c:
         r = await c.get(url, params=params)
     r.raise_for_status()
     return r.content

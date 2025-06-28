@@ -3,6 +3,11 @@ import os
 import html
 from io import BytesIO
 
+from dotenv import load_dotenv
+
+# Load environment variables before importing internal modules
+load_dotenv()
+
 import zbx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -10,10 +15,6 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
 from aiogram.types import InputFile
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 # ADMIN_CHAT_IDS: comma-separated list of chat IDs
 ADMIN_CHAT_IDS = [int(cid) for cid in os.getenv("ADMIN_CHAT_IDS", "").split(",") if cid.strip()]

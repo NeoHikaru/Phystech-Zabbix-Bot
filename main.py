@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
-from aiogram.types import InputFile
+from aiogram.types import BufferedInputFile
 from aiogram.client.default import DefaultBotProperties
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -58,7 +58,7 @@ async def send_clean(chat_id: int, text: str, reply_markup: InlineKeyboardMarkup
     return m
 
 
-async def send_clean_document(chat_id: int, doc: InputFile, caption: str | None = None) -> types.Message:
+async def send_clean_document(chat_id: int, doc: BufferedInputFile, caption: str | None = None) -> types.Message:
     """Send document after deleting previous bot message."""
     last_id = LAST_MESSAGES.get(chat_id)
     if last_id:
@@ -330,8 +330,8 @@ async def cmd_graph(msg: types.Message, command: Command):
     try:
         png = await zbx.chart_png(itemid, period)
         bio = BytesIO(png)
-        bio.name = f"item_{itemid}.png"
-        await send_clean_document(msg.chat.id, InputFile(bio))
+        filename = f"item_{itemid}.png"
+        await send_clean_document(msg.chat.id, BufferedInputFile(bio.getvalue(), filename))
     except Exception as e:
         await send_clean(msg.chat.id, f"⚠️ Ошибка при построении графика: <pre>{html.escape(str(e))}</pre>")
 

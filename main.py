@@ -2,7 +2,6 @@ import asyncio
 import os
 import html
 import re
-import datetime
 from io import BytesIO
 
 from dotenv import load_dotenv
@@ -127,15 +126,6 @@ async def zabbix_alert(req: Request):
 
     # Remove links from the incoming message to avoid leaking internal URLs
     raw_message = str(payload.get("message", payload))
-
-    # Try to extract problem/event ID from a link like ?eventid=1234
-    id_match = re.search(r"eventid=(\d+)", raw_message)
-
-    # Remove all hyperlinks from the incoming message
-    clean_message = re.sub(r"<a[^>]*>.*?</a>", "", raw_message, flags=re.DOTALL)
-
-    if id_match:
-        clean_message += f"\nНомер проблемы: {id_match.group(1)}"
 
     text = (
         f"📡 <b>{html.escape(payload.get('subject', 'Zabbix alert'))}</b>\n"

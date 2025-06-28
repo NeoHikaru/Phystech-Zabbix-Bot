@@ -46,7 +46,7 @@ cd Phystech-Zabbix-Bot
 ```
 
 ### 2. Настройка переменных окружения
-
+```bash
 BOT_TOKEN=ваш_токен_бота_telegram
 ADMIN_CHAT_IDS=ID_чата1,ID_чата2  # перечислите ID через запятую
 ZABBIX_URL=https://zabbix.example.com/api_jsonrpc.php

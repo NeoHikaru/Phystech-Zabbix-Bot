@@ -41,6 +41,35 @@ SEVERITY_NAMES = {
     5: "Критическая",
 }
 
+# Track last bot message in each chat to delete it on next command
+LAST_MESSAGES: dict[int, int] = {}
+
+
+async def send_clean(chat_id: int, text: str, reply_markup: InlineKeyboardMarkup | None = None) -> types.Message:
+    """Send message removing the previous one for this chat."""
+    last_id = LAST_MESSAGES.get(chat_id)
+    if last_id:
+        try:
+            await bot.delete_message(chat_id, last_id)
+        except Exception:
+            pass
+    m = await bot.send_message(chat_id, text, reply_markup=reply_markup)
+    LAST_MESSAGES[chat_id] = m.message_id
+    return m
+
+
+async def send_clean_document(chat_id: int, doc: InputFile, caption: str | None = None) -> types.Message:
+    """Send document after deleting previous bot message."""
+    last_id = LAST_MESSAGES.get(chat_id)
+    if last_id:
+        try:
+            await bot.delete_message(chat_id, last_id)
+        except Exception:
+            pass
+    m = await bot.send_document(chat_id, doc, caption=caption)
+    LAST_MESSAGES[chat_id] = m.message_id
+    return m
+
 
 async def run_ping(target: str, label: str | None = None) -> str:
     """Execute ping and return formatted result."""
@@ -78,10 +107,10 @@ async def fetch_ping_target(host_id: str) -> str:
     """Return DNS or IP address best suited for ping."""
     interfaces = await zbx.call(
         "hostinterface.get",
-        {"output": ["ip", "dns"], "hostids": [host_id], "sortfield": "main", "limit": 1, "sortorder": "DESC"},
+        {"output": ["ip", "dns", "main"], "hostids": [host_id]},
     )
     if interfaces:
-        iface = interfaces[0]
+        iface = next((i for i in interfaces if str(i.get("main")) == "1"), interfaces[0])
         if iface.get("ip") and iface["ip"] != "0.0.0.0":
             return iface["ip"]
         if iface.get("dns"):
@@ -114,7 +143,7 @@ async def show_host_list(message: types.Message):
     if row:
         buttons.append(row)
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
-    await message.answer("<b>Выберите хост:</b>", reply_markup=kb)
+    await send_clean(message.chat.id, "<b>Выберите хост:</b>", reply_markup=kb)
 
 
 async def build_status_summary():
@@ -162,7 +191,7 @@ async def fetch_problems():
 @dp.message(Command("status"))
 async def cmd_status(msg: types.Message):
     text, kb, *_ = await build_status_summary()
-    await msg.answer(text, reply_markup=kb)
+    await send_clean(msg.chat.id, text, reply_markup=kb)
 
 
 @dp.callback_query(lambda c: c.data == "status_details")
@@ -182,23 +211,23 @@ async def cb_status_details(cb: types.CallbackQuery):
     kb = InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="status_back")]]
     )
-    await cb.message.answer(text, reply_markup=kb)
+    await send_clean(cb.message.chat.id, text, reply_markup=kb)
     await cb.answer()
 
 
 @dp.callback_query(lambda c: c.data == "status_back")
 async def cb_status_back(cb: types.CallbackQuery):
     text, kb, *_ = await build_status_summary()
-    await cb.message.answer(text, reply_markup=kb)
+    await send_clean(cb.message.chat.id, text, reply_markup=kb)
     await cb.answer()
 
 @dp.message(Command("ping"))
 async def cmd_ping(msg: types.Message, command: Command):
     if not command.args:
-        return await msg.answer("Использование: /ping &lt;host&gt;")
+        return await send_clean(msg.chat.id, "Использование: /ping &lt;host&gt;")
     host = command.args.strip()
     reply = await run_ping(host)
-    await msg.answer(reply)
+    await send_clean(msg.chat.id, reply)
 
 
 @dp.message(Command("hosts"))
@@ -223,7 +252,7 @@ async def cb_host_menu(cb: types.CallbackQuery):
             [InlineKeyboardButton(text="Назад", callback_data="hosts_list")],
         ]
     )
-    await cb.message.answer(f"<b>{html.escape(name)}</b>", reply_markup=kb)
+    await send_clean(cb.message.chat.id, f"<b>{html.escape(name)}</b>", reply_markup=kb)
     await cb.answer()
 
 
@@ -234,7 +263,7 @@ async def cb_host_ping(cb: types.CallbackQuery):
     target = await fetch_ping_target(host_id)
     result = await run_ping(target, label=name)
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data=f"host:{host_id}")]])
-    await cb.message.answer(result, reply_markup=kb)
+    await send_clean(cb.message.chat.id, result, reply_markup=kb)
     await cb.answer()
 
 
@@ -250,28 +279,28 @@ async def cb_host_problems(cb: types.CallbackQuery):
         lines.append(f"{sev}: {html.escape(pr['name'])} ({ts})")
     text = f"<b>Проблемы {html.escape(name)}:</b>\n" + ("\n".join(lines) if lines else "Нет проблем")
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data=f"host:{host_id}")]])
-    await cb.message.answer(text, reply_markup=kb)
+    await send_clean(cb.message.chat.id, text, reply_markup=kb)
     await cb.answer()
 
 @dp.message(Command("graph"))
 async def cmd_graph(msg: types.Message, command: Command):
     parts = (command.args or "").split()
     if not parts:
-        return await msg.answer("Использование: /graph <itemid> [минут]")
+        return await send_clean(msg.chat.id, "Использование: /graph <itemid> [минут]")
     try:
         itemid = int(parts[0])
     except ValueError:
-        return await msg.answer("❌ <b>Неверный itemid</b>\nИспользование: /graph <itemid> [минут]")
+        return await send_clean(msg.chat.id, "❌ <b>Неверный itemid</b>\nИспользование: /graph <itemid> [минут]")
     minutes = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 60
     period = minutes * 60
-    await msg.answer("⏳ Сбор данных и построение графика…")
+    await send_clean(msg.chat.id, "⏳ Сбор данных и построение графика…")
     try:
         png = await zbx.chart_png(itemid, period)
         bio = BytesIO(png)
         bio.name = f"item_{itemid}.png"
-        await msg.answer_document(InputFile(bio))
+        await send_clean_document(msg.chat.id, InputFile(bio))
     except Exception as e:
-        await msg.answer(f"⚠️ Ошибка при построении графика: <pre>{html.escape(str(e))}</pre>")
+        await send_clean(msg.chat.id, f"⚠️ Ошибка при построении графика: <pre>{html.escape(str(e))}</pre>")
 
 @dp.message(Command("help"))
 async def cmd_help(msg: types.Message):
@@ -283,7 +312,7 @@ async def cmd_help(msg: types.Message):
         "/graph &lt;itemid&gt; [минут] — построить график метрики\n"
         "/help — показать эту справку"
     )
-    await msg.answer(text)
+    await send_clean(msg.chat.id, text)
 
 # FastAPI endpoints
 @app.get("/healthz")

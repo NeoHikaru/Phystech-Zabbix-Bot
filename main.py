@@ -1,6 +1,7 @@
 import asyncio
 import os
 import html
+import re
 from io import BytesIO
 
 from dotenv import load_dotenv
@@ -91,10 +92,21 @@ def health():
 
 @app.post("/zabbix")
 async def zabbix_alert(req: Request):
+    """Receive alerts from Zabbix and forward them to Telegram."""
     payload = await req.json()
-    text = f"📡 <b>{html.escape(payload.get('subject', 'Zabbix alert'))}</b>\n{html.escape(str(payload.get('message', payload)))}"
+
+    # Remove links from the incoming message to avoid leaking internal URLs
+    raw_message = str(payload.get("message", payload))
+    clean_message = re.sub(r"<a[^>]*>.*?</a>", "", raw_message, flags=re.DOTALL)
+
+    text = (
+        f"📡 <b>{html.escape(payload.get('subject', 'Zabbix alert'))}</b>\n"
+        f"{html.escape(clean_message)}"
+    )
+
     for chat_id in ADMIN_CHAT_IDS:
         await bot.send_message(chat_id, text)
+
     return JSONResponse({"ok": True})
 
 # Startup and polling

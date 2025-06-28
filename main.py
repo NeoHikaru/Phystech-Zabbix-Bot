@@ -85,7 +85,7 @@ async def fetch_host_problems(host_id: str):
 async def show_host_list(message: types.Message):
     hosts = await fetch_hosts()
     buttons = [
-        [InlineKeyboardButton(h["name"], callback_data=f"host:{h['hostid']}")]
+        [InlineKeyboardButton(text=h["name"], callback_data=f"host:{h['hostid']}")]
         for h in hosts[:50]
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -105,7 +105,7 @@ async def build_status_summary():
     kb = None
     if problems:
         kb = InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton("Показать проблемы", callback_data="status_details")]]
+            inline_keyboard=[[InlineKeyboardButton(text="Показать проблемы", callback_data="status_details")]]
         )
 
     return text, kb, problems, host_map
@@ -155,7 +155,7 @@ async def cb_status_details(cb: types.CallbackQuery):
 
     text = "Нет проблем" if not details else "<b>Текущие проблемы:</b>\n" + "\n".join(details[:15])
     kb = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton("Назад", callback_data="status_back")]]
+        inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="status_back")]]
     )
     await cb.message.answer(text, reply_markup=kb)
     await cb.answer()
@@ -193,9 +193,9 @@ async def cb_host_menu(cb: types.CallbackQuery):
     name = await fetch_host_name(host_id)
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton("Пинг", callback_data=f"hostping:{host_id}")],
-            [InlineKeyboardButton("Проблемы", callback_data=f"hostproblems:{host_id}")],
-            [InlineKeyboardButton("Назад", callback_data="hosts_list")],
+            [InlineKeyboardButton(text="Пинг", callback_data=f"hostping:{host_id}")],
+            [InlineKeyboardButton(text="Проблемы", callback_data=f"hostproblems:{host_id}")],
+            [InlineKeyboardButton(text="Назад", callback_data="hosts_list")],
         ]
     )
     await cb.message.answer(f"<b>{html.escape(name)}</b>", reply_markup=kb)
@@ -207,7 +207,7 @@ async def cb_host_ping(cb: types.CallbackQuery):
     host_id = cb.data.split(":", 1)[1]
     name = await fetch_host_name(host_id)
     result = await run_ping(name)
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton("Назад", callback_data=f"host:{host_id}")]])
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data=f"host:{host_id}")]])
     await cb.message.answer(result, reply_markup=kb)
     await cb.answer()
 
@@ -223,7 +223,7 @@ async def cb_host_problems(cb: types.CallbackQuery):
         sev = SEVERITY_NAMES[int(pr["severity"])]
         lines.append(f"{sev}: {html.escape(pr['name'])} ({ts})")
     text = f"<b>Проблемы {html.escape(name)}:</b>\n" + ("\n".join(lines) if lines else "Нет проблем")
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton("Назад", callback_data=f"host:{host_id}")]])
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data=f"host:{host_id}")]])
     await cb.message.answer(text, reply_markup=kb)
     await cb.answer()
 

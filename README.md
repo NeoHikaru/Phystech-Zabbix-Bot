@@ -45,9 +45,7 @@ cd Phystech-Zabbix-Bot
 
 ### 2. Настройка переменных окружения
 
-Скопируйте файл `.env.example` в `.env` и заполните параметры:
-
-```dotenv
+@@ -48,60 +51,64 @@ cd Phystech-Zabbix-Bot
 BOT_TOKEN=ваш_токен_бота_telegram
 ADMIN_CHAT_IDS=ID_чата1,ID_чата2  # перечислите ID через запятую
 ZABBIX_URL=https://zabbix.example.com/api_jsonrpc.php
@@ -111,18 +109,3 @@ docker compose up -d --build
 ## 🐞 Отладка и проблемы
 
 * Логи контейнера:
-
-  ```bash
-  docker compose logs -f zabbixbot
-  ```
-* Проверьте доступность Zabbix API:
-
-  ```bash
-  curl -k -H 'Content-Type: application/json' \
-    -d '{"jsonrpc":"2.0","method":"apiinfo.version","params":[],"id":1}' \
-    $ZABBIX_URL
-  ```
-
-## 📜 Лицензия
-
-MIT © 2025 Отдел информационных технологий Физико-Технического Колледжа

@@ -21,14 +21,14 @@
 ## 📋 Структура проекта
 
 ```
-netstatus-bot/
-├── .env        # Образец переменных окружения
-├── docker-compose.yml  # Сборка и запуск контейнеров
-└── bot/                # Код бота
-    ├── Dockerfile      # Описание контейнера
-    ├── requirements.txt# Зависимости Python
-    ├── main.py         # Логика бота и FastAPI
-    └── zbx.py          # Обёртка для Zabbix API
+Phystech-Zabbix-Bot/
+├── .env.example   # Пример переменных окружения
+├── docker-compose.yml
+├── Dockerfile
+├── requirements.txt
+├── main.py        # Логика бота и FastAPI
+├── zbx.py         # Обёртка для Zabbix API
+└── __init__.py
 ```
 
 ## 🛠️ Быстрый старт
@@ -37,20 +37,21 @@ netstatus-bot/
 
 ```bash
 git clone https://github.com/NeoHikaru/Phystech-Zabbix-Bot.git
-cd netstatus-bot
+cd Phystech-Zabbix-Bot
 ```
 
 ### 2. Настройка переменных окружения
 
-Скопируйте файл `.env` и заполните параметры:
+Скопируйте файл `.env.example` в `.env` и заполните параметры:
 
 ```dotenv
 BOT_TOKEN=ваш_токен_бота_telegram
-ADMIN_CHAT_ID=ID_чата_для_уведомлений
+ADMIN_CHAT_IDS=ID_чата1,ID_чата2  # перечислите ID через запятую
 ZABBIX_URL=https://zabbix.example.com/api_jsonrpc.php
 ZABBIX_USER=api_user
 ZABBIX_PASS=api_password
-ZBX_TOKEN=      # если используете API-токен
+ZABBIX_TOKEN=      # если используете API-токен
+ZABBIX_VERIFY_SSL=true  # отключите для самоподписанных сертификатов
 ZABBIX_WEB=https://zabbix.example.com
 ```
 

@@ -1,6 +1,8 @@
 import asyncio
 import os
 import html
+import re
+import datetime
 from io import BytesIO
 
 from dotenv import load_dotenv
@@ -15,34 +17,114 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
 from aiogram.types import InputFile
+from aiogram.client.default import DefaultBotProperties
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 # ADMIN_CHAT_IDS: comma-separated list of chat IDs
 ADMIN_CHAT_IDS = [int(cid) for cid in os.getenv("ADMIN_CHAT_IDS", "").split(",") if cid.strip()]
 ZABBIX_WEB = os.getenv("ZABBIX_WEB")  # e.g. https://zabbix.example.com
 
 # Initialize Bot and Dispatcher
-bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
 # Initialize FastAPI app
 app = FastAPI()
 
+
+async def fetch_problems():
+    """Return a list of current problems and a mapping of eventid -> host name."""
+    params = {
+        "output": ["eventid", "name", "severity", "clock"],
+        "sortfield": "eventid",
+        "sortorder": "DESC",
+    }
+
+    problems = await zbx.call("problem.get", {**params, "selectHosts": ["name"]})
+    if problems:
+        host_map = {p["eventid"]: p.get("hosts", [{}])[0].get("name") for p in problems}
+    else:
+        problems = await zbx.call("problem.get", params)
+        event_ids = [p["eventid"] for p in problems]
+        hosts_info = await zbx.call(
+            "event.get",
+            {"output": ["eventid"], "eventids": event_ids, "selectHosts": ["name"]},
+        )
+        host_map = {e["eventid"]: e.get("hosts", [{}])[0].get("name") for e in hosts_info}
+
+    return problems, host_map
+
 # Aiogram command handlers
 @dp.message(Command("status"))
 async def cmd_status(msg: types.Message):
-    problems = await zbx.call("problem.get", {"output": ["severity"]})
-    sev_map = {0: "Не классифицировано", 1: "Информация", 2: "Предупреждение", 3: "Средняя", 4: "Высокая", 5: "Критическая"}
+    problems, host_map = await fetch_problems()
+
+    sev_map = {
+        0: "Не классифицировано",
+        1: "Информация",
+        2: "Предупреждение",
+        3: "Средняя",
+        4: "Высокая",
+        5: "Критическая",
+    }
+
     counts = {name: 0 for name in sev_map.values()}
+    details = []
     for pr in problems:
-        counts[sev_map[int(pr["severity"])]] += 1
+        sev_name = sev_map[int(pr["severity"])]
+        counts[sev_name] += 1
+
+        host = host_map.get(pr["eventid"], "?")
+        clock = int(pr.get("clock", 0))
+        ts = datetime.datetime.fromtimestamp(clock).strftime("%Y-%m-%d %H:%M")
+        details.append(
+            f"{sev_name} — <b>{html.escape(host)}</b>: {html.escape(pr['name'])} ({ts})"
+        )
+
     lines = [f"{k}: <b>{v}</b>" for k, v in counts.items() if v]
+
     text = "✅ Проблем нет" if not lines else "🖥 <b>Сводка проблем</b>\n" + "\n".join(lines)
-    await msg.answer(text)
+
+    kb = None
+    if details:
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="Показать проблемы", callback_data="status_details")]]
+        )
+
+    await msg.answer(text, reply_markup=kb)
+
+
+@dp.callback_query(lambda c: c.data == "status_details")
+async def cb_status_details(cb: types.CallbackQuery):
+    problems, host_map = await fetch_problems()
+
+    sev_map = {
+        0: "Не классифицировано",
+        1: "Информация",
+        2: "Предупреждение",
+        3: "Средняя",
+        4: "Высокая",
+        5: "Критическая",
+    }
+
+    details = []
+    for pr in problems:
+        sev_name = sev_map[int(pr["severity"])]
+        host = host_map.get(pr["eventid"], "?")
+        clock = int(pr.get("clock", 0))
+        ts = datetime.datetime.fromtimestamp(clock).strftime("%Y-%m-%d %H:%M")
+        details.append(
+            f"{sev_name} — <b>{html.escape(host)}</b>: {html.escape(pr['name'])} ({ts})"
+        )
+
+    text = "Нет проблем" if not details else "<b>Текущие проблемы:</b>\n" + "\n".join(details[:15])
+    await cb.message.answer(text)
+    await cb.answer()
 
 @dp.message(Command("ping"))
 async def cmd_ping(msg: types.Message, command: Command):
     if not command.args:
-        return await msg.answer("Использование: /ping <host>")
+        return await msg.answer("Использование: /ping &lt;host&gt;")
     host = command.args.strip()
     proc = await asyncio.create_subprocess_exec(
         "ping", "-c", "4", host,
@@ -77,9 +159,9 @@ async def cmd_graph(msg: types.Message, command: Command):
 async def cmd_help(msg: types.Message):
     text = (
         "<b>📖 Список команд Phystech Zabbix Bot:</b>\n\n"
-        "/status — сводка открытых проблем\n"
-        "/ping <host> — проверить доступность хоста\n"
-        "/graph <itemid> [минут] — построить график метрики\n"
+        "/status — сводка открытых проблем (кнопка деталей)\n"
+        "/ping &lt;host&gt; — проверить доступность хоста\n"
+        "/graph &lt;itemid&gt; [минут] — построить график метрики\n"
         "/help — показать эту справку"
     )
     await msg.answer(text)
@@ -91,10 +173,26 @@ def health():
 
 @app.post("/zabbix")
 async def zabbix_alert(req: Request):
+    """Receive alerts from Zabbix and forward them to Telegram."""
     payload = await req.json()
-    text = f"📡 <b>{html.escape(payload.get('subject', 'Zabbix alert'))}</b>\n{html.escape(str(payload.get('message', payload)))}"
+
+    # Remove links from the incoming message to avoid leaking internal URLs
+    raw_message = str(payload.get("message", payload))
+    clean_message = re.sub(r"<a[^>]*>.*?</a>", "", raw_message, flags=re.DOTALL)
+
+    # Try to extract problem/event ID from a link like ?eventid=1234
+    id_match = re.search(r"eventid=(\d+)", raw_message)
+    if id_match:
+        clean_message += f"\nНомер проблемы: {id_match.group(1)}"
+
+    text = (
+        f"📡 <b>{html.escape(payload.get('subject', 'Zabbix alert'))}</b>\n"
+        f"{html.escape(clean_message)}"
+    )
+
     for chat_id in ADMIN_CHAT_IDS:
         await bot.send_message(chat_id, text)
+
     return JSONResponse({"ok": True})
 
 # Startup and polling

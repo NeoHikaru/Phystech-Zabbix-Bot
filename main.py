@@ -2,6 +2,7 @@ import asyncio
 import os
 import html
 import re
+import datetime
 from io import BytesIO
 
 from dotenv import load_dotenv
@@ -16,13 +17,14 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
 from aiogram.types import InputFile
+from aiogram.client.default import DefaultBotProperties
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 # ADMIN_CHAT_IDS: comma-separated list of chat IDs
 ADMIN_CHAT_IDS = [int(cid) for cid in os.getenv("ADMIN_CHAT_IDS", "").split(",") if cid.strip()]
 ZABBIX_WEB = os.getenv("ZABBIX_WEB")  # e.g. https://zabbix.example.com
 
 # Initialize Bot and Dispatcher
-bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
 # Initialize FastAPI app
@@ -126,6 +128,12 @@ async def zabbix_alert(req: Request):
 
     # Remove links from the incoming message to avoid leaking internal URLs
     raw_message = str(payload.get("message", payload))
+    clean_message = re.sub(r"<a[^>]*>.*?</a>", "", raw_message, flags=re.DOTALL)
+
+    # Try to extract problem/event ID from a link like ?eventid=1234
+    id_match = re.search(r"eventid=(\d+)", raw_message)
+    if id_match:
+        clean_message += f"\nНомер проблемы: {id_match.group(1)}"
 
     text = (
         f"📡 <b>{html.escape(payload.get('subject', 'Zabbix alert'))}</b>\n"

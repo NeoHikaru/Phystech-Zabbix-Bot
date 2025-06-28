@@ -12,6 +12,8 @@ load_dotenv()
 
 import zbx
 import storage
+import ml
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from aiogram import Bot, Dispatcher, types
@@ -346,6 +348,13 @@ async def cmd_events(msg: types.Message):
     text = "<b>Последние события:</b>\n" + "\n".join(lines)
     await send_clean(msg.chat.id, text)
 
+
+@dp.message(Command("anomaly"))
+async def cmd_anomaly(msg: types.Message):
+    is_bad = await ml.check_latest_anomaly()
+    text = "Нет всплесков" if not is_bad else "❗️ Обнаружен всплеск событий"
+    await send_clean(msg.chat.id, text)
+
 @dp.message(Command("help"))
 async def cmd_help(msg: types.Message):
     text = (
@@ -355,6 +364,7 @@ async def cmd_help(msg: types.Message):
         "/hosts — выбрать хост для действий\n"
         "/graph &lt;itemid&gt; [минут] — построить график метрики\n"
         "/events — последние оповещения\n"
+        "/anomaly — поиск всплесков событий\n"
         "/help — показать эту справку"
     )
     await send_clean(msg.chat.id, text)
@@ -384,15 +394,19 @@ async def zabbix_alert(req: Request):
         f"{html.escape(clean_message)}"
     )
     await storage.save_event(subject, clean_message)
+    spike = await ml.check_latest_anomaly()
 
     for chat_id in ADMIN_CHAT_IDS:
         await bot.send_message(chat_id, text)
+        if spike:
+            await bot.send_message(chat_id, "⚠️ Обнаружен всплеск событий (ML)")
 
     return JSONResponse({"ok": True})
 
 # Startup and polling
 async def on_startup():
     await storage.init_db()
+    await ml.train_model()
     await bot.delete_webhook(drop_pending_updates=True)
     await bot.set_my_commands([
         types.BotCommand(command="status", description="Сводка проблем"),
@@ -400,6 +414,8 @@ async def on_startup():
         types.BotCommand(command="hosts",  description="Список хостов"),
         types.BotCommand(command="graph",  description="График метрики"),
         types.BotCommand(command="events", description="Последние события"),
+        types.BotCommand(command="anomaly", description="Поиск всплесков"),
+
         types.BotCommand(command="help",   description="Справка"),
     ])
     print("✅ Webhook удалён, команды зарегистрированы")

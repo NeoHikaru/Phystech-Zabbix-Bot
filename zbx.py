@@ -89,8 +89,19 @@ async def chart_png(itemid: int, period: int = 3600) -> bytes:
         "height":    200,
         "name":      ""            # без заголовка
     }
-    headers = {"Authorization": f"Bearer {get_token()}"}  # токен в заголовке
-    async with httpx.AsyncClient(verify=ZBX_VERIFY_SSL, headers=headers) as c:
+    token = get_token()
+    headers = {}
+    cookies = None
+    if ZBX_TOKEN:
+        headers["Authorization"] = f"Bearer {token}"
+    else:
+        cookies = {"zbx_sessionid": token, "zbx_session": token}
+        params["sid"] = token
+
+    async with httpx.AsyncClient(verify=ZBX_VERIFY_SSL, headers=headers, cookies=cookies) as c:
         r = await c.get(url, params=params)
     r.raise_for_status()
-    return r.content
+    data = r.content
+    if not data.startswith(b"\x89PNG"):
+        raise ValueError("Invalid PNG data returned")
+    return data

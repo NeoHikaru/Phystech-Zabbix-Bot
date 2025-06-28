@@ -35,12 +35,15 @@ app = FastAPI()
 async def cmd_status(msg: types.Message):
     params = {
         "output": ["eventid", "name", "severity", "clock"],
-        "sortfield": "clock",
+        "sortfield": "eventid",
         "sortorder": "DESC",
     }
-    # Try requesting hosts directly; older Zabbix versions don't support it
+
+    # Try requesting hosts directly; older Zabbix versions may not support this
     problems = await zbx.call("problem.get", {**params, "selectHosts": ["name"]})
-    if not problems:
+    if problems:
+        host_map = {p["eventid"]: p.get("hosts", [{}])[0].get("name") for p in problems}
+    else:
         problems = await zbx.call("problem.get", params)
         event_ids = [p["eventid"] for p in problems]
         hosts_info = await zbx.call(
@@ -48,10 +51,6 @@ async def cmd_status(msg: types.Message):
             {"output": ["eventid"], "eventids": event_ids, "selectHosts": ["name"]},
         )
         host_map = {e["eventid"]: e.get("hosts", [{}])[0].get("name") for e in hosts_info}
-    else:
-        host_map = {
-            p["eventid"]: p.get("hosts", [{}])[0].get("name") for p in problems
-        }
 
     sev_map = {
         0: "Не классифицировано",

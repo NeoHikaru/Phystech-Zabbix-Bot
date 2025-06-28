@@ -1,23 +1,25 @@
-import os, httpx, functools
+import os
+import httpx
+import functools
 
-ZBX_URL   = os.getenv("ZABBIX_URL")
-ZBX_USER  = os.getenv("ZABBIX_USER")
-ZBX_PASS  = os.getenv("ZABBIX_PASS")
+ZBX_URL = os.getenv("ZABBIX_URL")
+ZBX_USER = os.getenv("ZABBIX_USER")
+ZBX_PASS = os.getenv("ZABBIX_PASS")
 ZBX_TOKEN = os.getenv("ZABBIX_TOKEN")
 ZBX_VERIFY_SSL = os.getenv("ZABBIX_VERIFY_SSL", "true").lower() in ("1", "true", "yes")
 
+
 @functools.lru_cache()
 def get_token() -> str | None:
-    
-    if ZBX_TOKEN:                      # если используется API токен
+    """Retrieve API token or login using credentials."""
+    if ZBX_TOKEN:
         return ZBX_TOKEN
 
-    # иначе получаем session-token
     payload = {
         "jsonrpc": "2.0",
-        "method":  "user.login",
-        "params":  {"user": ZBX_USER, "password": ZBX_PASS},
-        "id":      1,
+        "method": "user.login",
+        "params": {"user": ZBX_USER, "password": ZBX_PASS},
+        "id": 1,
     }
     r = httpx.post(ZBX_URL, json=payload, verify=ZBX_VERIFY_SSL)
     try:
@@ -27,34 +29,32 @@ def get_token() -> str | None:
         return None
 
     if "result" in data:
-        tok = data["result"]
-        print(f"LOGIN OK: len={len(tok)}")
-        return tok
+        token = data["result"]
+        print(f"LOGIN OK: len={len(token)}")
+        return token
 
     print("LOGIN ERR:", data)
     return None
 
 
 async def call(method: str, params: dict):
-    
+    """Call Zabbix API method and return result list or empty list."""
     token = get_token()
     if not token:
         print("NO TOKEN → skip call", method)
         return []
 
-    
     payload = {
         "jsonrpc": "2.0",
-        "method":  method,
-        "params":  params,
-        "id":      1,
+        "method": method,
+        "params": params,
+        "id": 1,
     }
 
-    
-    headers = {}
-    if ZBX_TOKEN:                      # Bearer
+    headers: dict[str, str] = {}
+    if ZBX_TOKEN:
         headers["Authorization"] = f"Bearer {token}"
-    else:                              # sessionid
+    else:
         payload["auth"] = token
 
     async with httpx.AsyncClient(verify=ZBX_VERIFY_SSL, headers=headers) as c:
@@ -67,7 +67,8 @@ async def call(method: str, params: dict):
         return []
 
     if method == "problem.get":
-        print(f"API {method}: status={r.status_code}, count={len(data.get('result', []))}")
+        count = len(data.get("result", []))
+        print(f"API {method}: status={r.status_code}, count={count}")
 
     if "result" in data and isinstance(data["result"], list):
         return data["result"]
@@ -77,20 +78,31 @@ async def call(method: str, params: dict):
 
     return []
 
+
 async def chart_png(itemid: int, period: int = 3600) -> bytes:
-    """
-    Скачивает PNG-график itemid за period секунд.
-    """
+    """Download a PNG chart for the given item and period."""
     url = f"{os.getenv('ZABBIX_WEB')}/chart2.php"
     params = {
         "itemids[]": itemid,
-        "period":    period,
-        "width":     900,
-        "height":    200,
-        "name":      ""            # без заголовка
+        "period": period,
+        "width": 900,
+        "height": 200,
+        "name": "",
     }
-    headers = {"Authorization": f"Bearer {get_token()}"}  # токен в заголовке
-    async with httpx.AsyncClient(verify=ZBX_VERIFY_SSL, headers=headers) as c:
+
+    token = get_token()
+    headers: dict[str, str] = {}
+    cookies = None
+    if ZBX_TOKEN:
+        headers["Authorization"] = f"Bearer {token}"
+    else:
+        cookies = {"zbx_sessionid": token, "zbx_session": token}
+        params["sid"] = token
+
+    async with httpx.AsyncClient(verify=ZBX_VERIFY_SSL, headers=headers, cookies=cookies) as c:
         r = await c.get(url, params=params)
     r.raise_for_status()
-    return r.content
+    data = r.content
+    if not data.startswith(b"\x89PNG"):
+        raise ValueError("Invalid PNG data returned")
+    return data

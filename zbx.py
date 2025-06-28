@@ -6,7 +6,11 @@ ZBX_URL = os.getenv("ZABBIX_URL")
 ZBX_USER = os.getenv("ZABBIX_USER")
 ZBX_PASS = os.getenv("ZABBIX_PASS")
 ZBX_TOKEN = os.getenv("ZABBIX_TOKEN")
-ZBX_VERIFY_SSL = os.getenv("ZABBIX_VERIFY_SSL", "true").lower() in ("1", "true", "yes")
+ZBX_VERIFY_SSL = os.getenv("ZABBIX_VERIFY_SSL", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 
 @functools.lru_cache()
@@ -34,6 +38,32 @@ def get_token() -> str | None:
         return token
 
     print("LOGIN ERR:", data)
+    return None
+
+
+@functools.lru_cache()
+def get_session() -> str | None:
+    """Return a web session ID using username/password if available."""
+    if not (ZBX_USER and ZBX_PASS):
+        return None
+
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "user.login",
+        "params": {"user": ZBX_USER, "password": ZBX_PASS},
+        "id": 1,
+    }
+    r = httpx.post(ZBX_URL, json=payload, verify=ZBX_VERIFY_SSL)
+    try:
+        data = r.json()
+    except ValueError:
+        print("SESSION LOGIN not JSON:", r.text)
+        return None
+
+    if "result" in data:
+        session = data["result"]
+        return session
+
     return None
 
 
@@ -91,13 +121,14 @@ async def chart_png(itemid: int, period: int = 3600) -> bytes:
     }
 
     token = get_token()
+    session_id = get_session() if ZBX_TOKEN else token
     headers: dict[str, str] = {}
     cookies = None
-    if ZBX_TOKEN:
+    if session_id:
+        cookies = {"zbx_sessionid": session_id, "zbx_session": session_id}
+        params["sid"] = session_id
+    elif ZBX_TOKEN:
         headers["Authorization"] = f"Bearer {token}"
-    else:
-        cookies = {"zbx_sessionid": token, "zbx_session": token}
-        params["sid"] = token
 
     async with httpx.AsyncClient(verify=ZBX_VERIFY_SSL, headers=headers, cookies=cookies) as c:
         r = await c.get(url, params=params)

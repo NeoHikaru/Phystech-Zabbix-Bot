@@ -18,6 +18,7 @@ from aiogram.filters import Command
 from aiogram.enums import ParseMode
 from aiogram.types import InputFile
 from aiogram.client.default import DefaultBotProperties
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 # ADMIN_CHAT_IDS: comma-separated list of chat IDs
 ADMIN_CHAT_IDS = [int(cid) for cid in os.getenv("ADMIN_CHAT_IDS", "").split(",") if cid.strip()]
@@ -30,16 +31,15 @@ dp = Dispatcher()
 # Initialize FastAPI app
 app = FastAPI()
 
-# Aiogram command handlers
-@dp.message(Command("status"))
-async def cmd_status(msg: types.Message):
+
+async def fetch_problems():
+    """Return a list of current problems and a mapping of eventid -> host name."""
     params = {
         "output": ["eventid", "name", "severity", "clock"],
         "sortfield": "eventid",
         "sortorder": "DESC",
     }
 
-    # Try requesting hosts directly; older Zabbix versions may not support this
     problems = await zbx.call("problem.get", {**params, "selectHosts": ["name"]})
     if problems:
         host_map = {p["eventid"]: p.get("hosts", [{}])[0].get("name") for p in problems}
@@ -51,6 +51,13 @@ async def cmd_status(msg: types.Message):
             {"output": ["eventid"], "eventids": event_ids, "selectHosts": ["name"]},
         )
         host_map = {e["eventid"]: e.get("hosts", [{}])[0].get("name") for e in hosts_info}
+
+    return problems, host_map
+
+# Aiogram command handlers
+@dp.message(Command("status"))
+async def cmd_status(msg: types.Message):
+    problems, host_map = await fetch_problems()
 
     sev_map = {
         0: "Не классифицировано",
@@ -77,10 +84,42 @@ async def cmd_status(msg: types.Message):
     lines = [f"{k}: <b>{v}</b>" for k, v in counts.items() if v]
 
     text = "✅ Проблем нет" if not lines else "🖥 <b>Сводка проблем</b>\n" + "\n".join(lines)
-    if details:
-        text += "\n\n<b>Текущие проблемы:</b>\n" + "\n".join(details[:15])
 
-    await msg.answer(text)
+    kb = None
+    if details:
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="Показать проблемы", callback_data="status_details")]]
+        )
+
+    await msg.answer(text, reply_markup=kb)
+
+
+@dp.callback_query(lambda c: c.data == "status_details")
+async def cb_status_details(cb: types.CallbackQuery):
+    problems, host_map = await fetch_problems()
+
+    sev_map = {
+        0: "Не классифицировано",
+        1: "Информация",
+        2: "Предупреждение",
+        3: "Средняя",
+        4: "Высокая",
+        5: "Критическая",
+    }
+
+    details = []
+    for pr in problems:
+        sev_name = sev_map[int(pr["severity"])]
+        host = host_map.get(pr["eventid"], "?")
+        clock = int(pr.get("clock", 0))
+        ts = datetime.datetime.fromtimestamp(clock).strftime("%Y-%m-%d %H:%M")
+        details.append(
+            f"{sev_name} — <b>{html.escape(host)}</b>: {html.escape(pr['name'])} ({ts})"
+        )
+
+    text = "Нет проблем" if not details else "<b>Текущие проблемы:</b>\n" + "\n".join(details[:15])
+    await cb.message.answer(text)
+    await cb.answer()
 
 @dp.message(Command("ping"))
 async def cmd_ping(msg: types.Message, command: Command):
@@ -120,7 +159,7 @@ async def cmd_graph(msg: types.Message, command: Command):
 async def cmd_help(msg: types.Message):
     text = (
         "<b>📖 Список команд Phystech Zabbix Bot:</b>\n\n"
-        "/status — сводка и список открытых проблем\n"
+        "/status — сводка открытых проблем (кнопка деталей)\n"
         "/ping &lt;host&gt; — проверить доступность хоста\n"
         "/graph &lt;itemid&gt; [минут] — построить график метрики\n"
         "/help — показать эту справку"

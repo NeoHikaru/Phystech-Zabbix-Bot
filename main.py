@@ -136,14 +136,31 @@ async def fetch_host_problems(host_id: str):
     )
 
 
-async def show_host_list(message: types.Message):
+HOSTS_PER_PAGE = 20
+
+
+async def show_host_page(chat_id: int, page: int = 0):
     hosts = await fetch_hosts()
+    total = (len(hosts) + HOSTS_PER_PAGE - 1) // HOSTS_PER_PAGE or 1
+    page = max(0, min(page, total - 1))
+    start = page * HOSTS_PER_PAGE
+    subset = hosts[start : start + HOSTS_PER_PAGE]
+
     buttons = [
-        [InlineKeyboardButton(text=h["name"], callback_data=f"host:{h['hostid']}" )]
-        for h in hosts
+        [InlineKeyboardButton(text=h["name"], callback_data=f"host:{h['hostid']}")]
+        for h in subset
     ]
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"hostpage:{page-1}"))
+    if page < total - 1:
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"hostpage:{page+1}"))
+    nav.append(InlineKeyboardButton(text="Отмена", callback_data="hosts_cancel"))
+    buttons.append(nav)
+
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
-    await send_clean(message.chat.id, "<b>Выберите хост:</b>", reply_markup=kb)
+    await send_clean(chat_id, "<b>Выберите хост:</b>", reply_markup=kb)
 
 
 async def build_status_summary():
@@ -232,12 +249,28 @@ async def cmd_ping(msg: types.Message, command: Command):
 
 @dp.message(Command("hosts"))
 async def cmd_hosts(msg: types.Message):
-    await show_host_list(msg)
+    await show_host_page(msg.chat.id, 0)
 
 
 @dp.callback_query(lambda c: c.data == "hosts_list")
 async def cb_hosts_list(cb: types.CallbackQuery):
-    await show_host_list(cb.message)
+    await show_host_page(cb.message.chat.id, 0)
+    await cb.answer()
+
+
+@dp.callback_query(lambda c: c.data.startswith("hostpage:"))
+async def cb_host_page(cb: types.CallbackQuery):
+    page = int(cb.data.split(":", 1)[1])
+    await show_host_page(cb.message.chat.id, page)
+    await cb.answer()
+
+
+@dp.callback_query(lambda c: c.data == "hosts_cancel")
+async def cb_hosts_cancel(cb: types.CallbackQuery):
+    try:
+        await bot.delete_message(cb.message.chat.id, cb.message.message_id)
+    finally:
+        LAST_MESSAGES.pop(cb.message.chat.id, None)
     await cb.answer()
 
 

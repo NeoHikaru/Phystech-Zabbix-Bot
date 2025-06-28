@@ -43,7 +43,9 @@ git clone https://github.com/NeoHikaru/Phystech-Zabbix-Bot.git
 cd Phystech-Zabbix-Bot
 ```
 
-@@ -48,60 +50,64 @@ cd Phystech-Zabbix-Bot
+### 2. Настройка переменных окружения
+
+@@ -48,60 +51,64 @@ cd Phystech-Zabbix-Bot
 BOT_TOKEN=ваш_токен_бота_telegram
 ADMIN_CHAT_IDS=ID_чата1,ID_чата2  # перечислите ID через запятую
 ZABBIX_URL=https://zabbix.example.com/api_jsonrpc.php
@@ -81,7 +83,7 @@ docker compose up -d --build
 
 ### /hosts
 
-Показывает все хосты в виде компактных кнопок (несколько в строке). Нажмите на хост, чтобы выполнить пинг по его IP/DNS или посмотреть связанные проблемы.
+Показывает список хостов постранично (по 20 штук). Используйте кнопки «⬅️» и «➡️» для навигации, а «Отмена» закроет список. Нажмите на нужный хост, чтобы выполнить пинг по его IP/DNS или посмотреть связанные проблемы.
 
 ### /graph <itemid> \[минут]
 

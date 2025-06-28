@@ -347,6 +347,7 @@ async def cmd_events(msg: types.Message):
     for _id, ts, sub, _, label in rows:
         lbl = f" [{label}]" if label else ""
         lines.append(f"#{_id} {ts}: <i>{html.escape(sub)}</i>{lbl}")
+    lines = [f"{ts}: <i>{html.escape(sub)}</i>" for ts, sub, _ in rows]
     text = "<b>Последние события:</b>\n" + "\n".join(lines)
     await send_clean(msg.chat.id, text)
 
@@ -356,7 +357,6 @@ async def cmd_anomaly(msg: types.Message):
     is_bad = await ml.check_latest_anomaly()
     text = "Нет всплесков" if not is_bad else "❗️ Обнаружен всплеск событий"
     await send_clean(msg.chat.id, text)
-
 
 @dp.message(Command("label"))
 async def cmd_label(msg: types.Message, command: Command):
@@ -399,6 +399,7 @@ async def cmd_help(msg: types.Message):
         "/anomaly — поиск всплесков событий\n"
         "/label <id> <метка> — пометить событие\n"
         "/forecast <itemid> [часов] — прогноз значения\n"
+
         "/help — показать эту справку"
     )
     await send_clean(msg.chat.id, text)
@@ -427,11 +428,15 @@ async def zabbix_alert(req: Request):
         f"📡 <b>{html.escape(subject)}</b>\n"
         f"{html.escape(clean_message)}"
     )
+
     event_id = await storage.save_event(subject, clean_message)
     label = await ml.predict_label(subject, clean_message)
     if label:
         await storage.update_label(event_id, label)
         text += f"\nМетка: {html.escape(label)}"
+
+    await storage.save_event(subject, clean_message)
+
     spike = await ml.check_latest_anomaly()
 
     for chat_id in ADMIN_CHAT_IDS:
@@ -446,6 +451,7 @@ async def on_startup():
     await storage.init_db()
     await ml.train_model()
     await ml.train_classifier()
+
     await bot.delete_webhook(drop_pending_updates=True)
     await bot.set_my_commands([
         types.BotCommand(command="status", description="Сводка проблем"),
@@ -456,6 +462,7 @@ async def on_startup():
         types.BotCommand(command="anomaly", description="Поиск всплесков"),
         types.BotCommand(command="label", description="Пометить событие"),
         types.BotCommand(command="forecast", description="Прогноз метрики"),
+
         types.BotCommand(command="help",   description="Справка"),
     ])
     print("✅ Webhook удалён, команды зарегистрированы")

@@ -1,4 +1,7 @@
+
 """Simple ML helpers for the Zabbix bot."""
+"""Simple anomaly detection over event frequency using IsolationForest."""
+
 
 import asyncio
 import datetime as _dt
@@ -13,14 +16,15 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
 from statsmodels.tsa.arima.model import ARIMA
-
 import storage
 import zbx
+
 
 
 DB_PATH = os.getenv("EVENTS_DB_PATH", "events.db")
 MODEL_PATH = Path(os.getenv("ML_MODEL_PATH", "model.pkl"))
 CLF_PATH = Path(os.getenv("ML_CLF_PATH", "classifier.pkl"))
+
 
 
 def _fetch_timestamps() -> list[str]:
@@ -74,7 +78,6 @@ async def check_latest_anomaly() -> bool:
             return False
     pred = model.predict(X[-1:])
     return int(pred[0]) == -1
-
 
 def _load_classifier() -> Pipeline | None:
     if CLF_PATH.exists():

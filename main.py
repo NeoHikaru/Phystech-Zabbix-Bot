@@ -42,19 +42,23 @@ SEVERITY_NAMES = {
 }
 
 
-async def run_ping(host: str) -> str:
+async def run_ping(target: str, label: str | None = None) -> str:
     """Execute ping and return formatted result."""
     proc = await asyncio.create_subprocess_exec(
         "ping",
         "-c",
         "4",
-        host,
+        target,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
     out, err = await proc.communicate()
     ok = proc.returncode == 0
-    return f"{'✅' if ok else '❌'} <b>{html.escape(host)}</b>\n<pre>{html.escape((out or err).decode())}</pre>"
+    name = label or target
+    return (
+        f"{'✅' if ok else '❌'} <b>{html.escape(name)}</b>\n"
+        f"<pre>{html.escape((out or err).decode())}</pre>"
+    )
 
 
 async def fetch_hosts():
@@ -68,6 +72,22 @@ async def fetch_hosts():
 async def fetch_host_name(host_id: str) -> str:
     info = await zbx.call("host.get", {"output": ["name"], "hostids": [host_id]})
     return info[0]["name"] if info else host_id
+
+
+async def fetch_ping_target(host_id: str) -> str:
+    """Return DNS or IP address best suited for ping."""
+    interfaces = await zbx.call(
+        "hostinterface.get",
+        {"output": ["ip", "dns"], "hostids": [host_id], "sortfield": "main", "limit": 1, "sortorder": "DESC"},
+    )
+    if interfaces:
+        iface = interfaces[0]
+        if iface.get("ip") and iface["ip"] != "0.0.0.0":
+            return iface["ip"]
+        if iface.get("dns"):
+            return iface["dns"]
+    info = await zbx.call("host.get", {"output": ["host"], "hostids": [host_id]})
+    return info[0].get("host") if info else host_id
 
 
 async def fetch_host_problems(host_id: str):
@@ -84,10 +104,15 @@ async def fetch_host_problems(host_id: str):
 
 async def show_host_list(message: types.Message):
     hosts = await fetch_hosts()
-    buttons = [
-        [InlineKeyboardButton(text=h["name"], callback_data=f"host:{h['hostid']}")]
-        for h in hosts[:50]
-    ]
+    buttons = []
+    row = []
+    for idx, h in enumerate(hosts[:50], 1):
+        row.append(InlineKeyboardButton(text=h["name"], callback_data=f"host:{h['hostid']}"))
+        if len(row) == 3:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
     await message.answer("<b>Выберите хост:</b>", reply_markup=kb)
 
@@ -206,7 +231,8 @@ async def cb_host_menu(cb: types.CallbackQuery):
 async def cb_host_ping(cb: types.CallbackQuery):
     host_id = cb.data.split(":", 1)[1]
     name = await fetch_host_name(host_id)
-    result = await run_ping(name)
+    target = await fetch_ping_target(host_id)
+    result = await run_ping(target, label=name)
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data=f"host:{host_id}")]])
     await cb.message.answer(result, reply_markup=kb)
     await cb.answer()

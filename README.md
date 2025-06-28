@@ -51,7 +51,8 @@ ZABBIX_URL=https://zabbix.example.com/api_jsonrpc.php
 ZABBIX_USER=api_user
 ZABBIX_PASS=api_password
 ZABBIX_TOKEN=      # если используете API-токен
-ZABBIX_VERIFY_SSL=true  # отключите для самоподписанных сертификатов
+# Проверка TLS-сертификата Zabbix (true/false)
+ZABBIX_VERIFY_SSL=true  # false для самоподписанных сертификатов
 ZABBIX_WEB=https://zabbix.example.com
 ```
 

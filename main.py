@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import zbx
+import storage
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from aiogram import Bot, Dispatcher, types
@@ -335,6 +336,16 @@ async def cmd_graph(msg: types.Message, command: Command):
     except Exception as e:
         await send_clean(msg.chat.id, f"⚠️ Ошибка при построении графика: <pre>{html.escape(str(e))}</pre>")
 
+
+@dp.message(Command("events"))
+async def cmd_events(msg: types.Message):
+    rows = await storage.fetch_events(5)
+    if not rows:
+        return await send_clean(msg.chat.id, "Событий нет")
+    lines = [f"{ts}: <i>{html.escape(sub)}</i>" for ts, sub, _ in rows]
+    text = "<b>Последние события:</b>\n" + "\n".join(lines)
+    await send_clean(msg.chat.id, text)
+
 @dp.message(Command("help"))
 async def cmd_help(msg: types.Message):
     text = (
@@ -343,6 +354,7 @@ async def cmd_help(msg: types.Message):
         "/ping &lt;host&gt; — проверить доступность хоста\n"
         "/hosts — выбрать хост для действий\n"
         "/graph &lt;itemid&gt; [минут] — построить график метрики\n"
+        "/events — последние оповещения\n"
         "/help — показать эту справку"
     )
     await send_clean(msg.chat.id, text)
@@ -366,10 +378,12 @@ async def zabbix_alert(req: Request):
     if id_match:
         clean_message += f"\nНомер проблемы: {id_match.group(1)}"
 
+    subject = payload.get('subject', 'Zabbix alert')
     text = (
-        f"📡 <b>{html.escape(payload.get('subject', 'Zabbix alert'))}</b>\n"
+        f"📡 <b>{html.escape(subject)}</b>\n"
         f"{html.escape(clean_message)}"
     )
+    await storage.save_event(subject, clean_message)
 
     for chat_id in ADMIN_CHAT_IDS:
         await bot.send_message(chat_id, text)
@@ -378,12 +392,14 @@ async def zabbix_alert(req: Request):
 
 # Startup and polling
 async def on_startup():
+    await storage.init_db()
     await bot.delete_webhook(drop_pending_updates=True)
     await bot.set_my_commands([
         types.BotCommand(command="status", description="Сводка проблем"),
         types.BotCommand(command="ping",   description="Пинг хоста"),
         types.BotCommand(command="hosts",  description="Список хостов"),
         types.BotCommand(command="graph",  description="График метрики"),
+        types.BotCommand(command="events", description="Последние события"),
         types.BotCommand(command="help",   description="Справка"),
     ])
     print("✅ Webhook удалён, команды зарегистрированы")

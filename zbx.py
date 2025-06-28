@@ -40,17 +40,28 @@ async def call(method: str, params: dict):
     token = get_token()
     if not token:
         print("NO TOKEN → skip call", method)
-    return []
+        return []
 
-    if method == "problem.get":
-        print(f"API {method}: status={r.status_code}, count={len(data.get('result', []))}")
+    payload = {
+        "jsonrpc": "2.0",
+        "method":  method,
+        "params":  params,
+        "id":      1,
+    }
+    headers = {}
+    if ZBX_TOKEN:                      # Bearer
+        headers["Authorization"] = f"Bearer {token}"
+    else:                              # sessionid
+        payload["auth"] = token
 
-    if "result" in data and isinstance(data["result"], list):
-        return data["result"]
+    async with httpx.AsyncClient(verify=ZBX_VERIFY_SSL, headers=headers) as c:
+        r = await c.post(ZBX_URL, json=payload)
 
-    if "error" in data:
-        print(f"API_ERR {method}:", data["error"])
-return []
+    try:
+        data = r.json()
+    except ValueError:
+        print(f"API {method}: not JSON", r.text[:200])
+        return []
 
     if method == "problem.get":
         print(f"API {method}: status={r.status_code}, count={len(data.get('result', []))}")

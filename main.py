@@ -31,13 +31,42 @@ app = FastAPI()
 # Aiogram command handlers
 @dp.message(Command("status"))
 async def cmd_status(msg: types.Message):
-    problems = await zbx.call("problem.get", {"output": ["severity"]})
-    sev_map = {0: "Не классифицировано", 1: "Информация", 2: "Предупреждение", 3: "Средняя", 4: "Высокая", 5: "Критическая"}
+    params = {
+        "output": ["name", "severity", "clock"],
+        "selectHosts": ["name"],
+        "sortfield": "clock",
+        "sortorder": "DESC",
+    }
+    problems = await zbx.call("problem.get", params)
+
+    sev_map = {
+        0: "Не классифицировано",
+        1: "Информация",
+        2: "Предупреждение",
+        3: "Средняя",
+        4: "Высокая",
+        5: "Критическая",
+    }
+
     counts = {name: 0 for name in sev_map.values()}
+    details = []
     for pr in problems:
-        counts[sev_map[int(pr["severity"])]] += 1
+        sev_name = sev_map[int(pr["severity"])]
+        counts[sev_name] += 1
+
+        host = pr.get("hosts", [{}])[0].get("name", "?")
+        clock = int(pr.get("clock", 0))
+        ts = datetime.datetime.fromtimestamp(clock).strftime("%Y-%m-%d %H:%M")
+        details.append(
+            f"{sev_name} — <b>{html.escape(host)}</b>: {html.escape(pr['name'])} ({ts})"
+        )
+
     lines = [f"{k}: <b>{v}</b>" for k, v in counts.items() if v]
+
     text = "✅ Проблем нет" if not lines else "🖥 <b>Сводка проблем</b>\n" + "\n".join(lines)
+    if details:
+        text += "\n\n<b>Текущие проблемы:</b>\n" + "\n".join(details[:15])
+
     await msg.answer(text)
 
 @dp.message(Command("ping"))
@@ -78,7 +107,7 @@ async def cmd_graph(msg: types.Message, command: Command):
 async def cmd_help(msg: types.Message):
     text = (
         "<b>📖 Список команд Phystech Zabbix Bot:</b>\n\n"
-        "/status — сводка открытых проблем\n"
+        "/status — сводка и список открытых проблем\n"
         "/ping <host> — проверить доступность хоста\n"
         "/graph <itemid> [минут] — построить график метрики\n"
         "/help — показать эту справку"
@@ -97,7 +126,6 @@ async def zabbix_alert(req: Request):
 
     # Remove links from the incoming message to avoid leaking internal URLs
     raw_message = str(payload.get("message", payload))
-    clean_message = re.sub(r"<a[^>]*>.*?</a>", "", raw_message, flags=re.DOTALL)
 
     text = (
         f"📡 <b>{html.escape(payload.get('subject', 'Zabbix alert'))}</b>\n"

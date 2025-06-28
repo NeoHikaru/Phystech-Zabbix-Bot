@@ -91,10 +91,15 @@ async def run_ping(target: str, label: str | None = None) -> str:
 
 
 async def fetch_hosts():
-    """Return list of hosts with id and name sorted alphabetically."""
+    """Return list of all hosts with id and name sorted alphabetically."""
     return await zbx.call(
         "host.get",
-        {"output": ["hostid", "name"], "sortfield": "name", "sortorder": "ASC"},
+        {
+            "output": ["hostid", "name"],
+            "sortfield": "name",
+            "sortorder": "ASC",
+            "limit": 0,
+        },
     )
 
 
@@ -133,15 +138,10 @@ async def fetch_host_problems(host_id: str):
 
 async def show_host_list(message: types.Message):
     hosts = await fetch_hosts()
-    buttons = []
-    row = []
-    for idx, h in enumerate(hosts[:50], 1):
-        row.append(InlineKeyboardButton(text=h["name"], callback_data=f"host:{h['hostid']}"))
-        if len(row) == 3:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
+    buttons = [
+        [InlineKeyboardButton(text=h["name"], callback_data=f"host:{h['hostid']}" )]
+        for h in hosts
+    ]
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
     await send_clean(message.chat.id, "<b>Выберите хост:</b>", reply_markup=kb)
 

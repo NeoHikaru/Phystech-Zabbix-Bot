@@ -40,31 +40,17 @@ async def call(method: str, params: dict):
     token = get_token()
     if not token:
         print("NO TOKEN → skip call", method)
-        return []
+    return []
 
-    
-    payload = {
-        "jsonrpc": "2.0",
-        "method":  method,
-        "params":  params,
-        "id":      1,
-    }
+    if method == "problem.get":
+        print(f"API {method}: status={r.status_code}, count={len(data.get('result', []))}")
 
-    
-    headers = {}
-    if ZBX_TOKEN:                      # Bearer
-        headers["Authorization"] = f"Bearer {token}"
-    else:                              # sessionid
-        payload["auth"] = token
+    if "result" in data and isinstance(data["result"], list):
+        return data["result"]
 
-    async with httpx.AsyncClient(verify=ZBX_VERIFY_SSL, headers=headers) as c:
-        r = await c.post(ZBX_URL, json=payload)
-
-    try:
-        data = r.json()
-    except ValueError:
-        print(f"API {method}: not JSON", r.text[:200])
-        return []
+    if "error" in data:
+        print(f"API_ERR {method}:", data["error"])
+return []
 
     if method == "problem.get":
         print(f"API {method}: status={r.status_code}, count={len(data.get('result', []))}")
@@ -95,7 +81,8 @@ async def chart_png(itemid: int, period: int = 3600) -> bytes:
     if ZBX_TOKEN:
         headers["Authorization"] = f"Bearer {token}"
     else:
-        cookies = {"zbx_sessionid": token}
+        cookies = {"zbx_sessionid": token, "zbx_session": token}
+        params["sid"] = token
 
     async with httpx.AsyncClient(verify=ZBX_VERIFY_SSL, headers=headers, cookies=cookies) as c:
         r = await c.get(url, params=params)

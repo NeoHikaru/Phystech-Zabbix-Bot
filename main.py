@@ -319,11 +319,11 @@ async def cb_host_problems(cb: types.CallbackQuery):
 async def cmd_graph(msg: types.Message, command: Command):
     parts = (command.args or "").split()
     if not parts:
-        return await send_clean(msg.chat.id, "Использование: /graph <itemid> [минут]")
+        return await send_clean(msg.chat.id, "Использование: /graph &lt;itemid&gt; [минут]")
     try:
         itemid = int(parts[0])
     except ValueError:
-        return await send_clean(msg.chat.id, "❌ <b>Неверный itemid</b>\nИспользование: /graph <itemid> [минут]")
+        return await send_clean(msg.chat.id, "❌ <b>Неверный itemid</b>\nИспользование: /graph &lt;itemid&gt; [минут]")
     minutes = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 60
     period = minutes * 60
     await send_clean(msg.chat.id, "⏳ Сбор данных и построение графика…")

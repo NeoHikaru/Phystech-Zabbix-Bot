@@ -13,6 +13,7 @@ load_dotenv()
 import zbx
 import storage
 import ml
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from aiogram import Bot, Dispatcher, types
@@ -414,6 +415,7 @@ async def on_startup():
         types.BotCommand(command="graph",  description="График метрики"),
         types.BotCommand(command="events", description="Последние события"),
         types.BotCommand(command="anomaly", description="Поиск всплесков"),
+
         types.BotCommand(command="help",   description="Справка"),
     ])
     print("✅ Webhook удалён, команды зарегистрированы")

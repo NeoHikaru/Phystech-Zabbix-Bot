@@ -13,7 +13,6 @@ load_dotenv()
 import zbx
 import storage
 import ml
-
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from aiogram import Bot, Dispatcher, types
@@ -344,6 +343,10 @@ async def cmd_events(msg: types.Message):
     rows = await storage.fetch_events(5)
     if not rows:
         return await send_clean(msg.chat.id, "Событий нет")
+    lines = []
+    for _id, ts, sub, _, label in rows:
+        lbl = f" [{label}]" if label else ""
+        lines.append(f"#{_id} {ts}: <i>{html.escape(sub)}</i>{lbl}")
     lines = [f"{ts}: <i>{html.escape(sub)}</i>" for ts, sub, _ in rows]
     text = "<b>Последние события:</b>\n" + "\n".join(lines)
     await send_clean(msg.chat.id, text)
@@ -355,6 +358,35 @@ async def cmd_anomaly(msg: types.Message):
     text = "Нет всплесков" if not is_bad else "❗️ Обнаружен всплеск событий"
     await send_clean(msg.chat.id, text)
 
+@dp.message(Command("label"))
+async def cmd_label(msg: types.Message, command: Command):
+    parts = (command.args or "").split(maxsplit=1)
+    if len(parts) != 2 or not parts[0].isdigit():
+        return await send_clean(msg.chat.id, "Использование: /label <id> <метка>")
+    event_id = int(parts[0])
+    label = parts[1]
+    await storage.update_label(event_id, label)
+    await ml.train_classifier()
+    await send_clean(msg.chat.id, f"Событие {event_id} помечено как {html.escape(label)}")
+
+
+@dp.message(Command("forecast"))
+async def cmd_forecast(msg: types.Message, command: Command):
+    parts = (command.args or "").split()
+    if not parts or not parts[0].isdigit():
+        return await send_clean(msg.chat.id, "Использование: /forecast <itemid> [часов]")
+    itemid = int(parts[0])
+    hours = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
+    await send_clean(msg.chat.id, "⏳ Прогнозирование…")
+    try:
+        values = await ml.forecast_item(itemid, hours)
+    except Exception as e:
+        return await send_clean(msg.chat.id, f"Ошибка: {html.escape(str(e))}")
+    if not values:
+        return await send_clean(msg.chat.id, "Недостаточно данных для прогноза")
+    vals = ", ".join(f"{v:.2f}" for v in values)
+    await send_clean(msg.chat.id, f"Прогноз: {vals}")
+
 @dp.message(Command("help"))
 async def cmd_help(msg: types.Message):
     text = (
@@ -365,6 +397,9 @@ async def cmd_help(msg: types.Message):
         "/graph &lt;itemid&gt; [минут] — построить график метрики\n"
         "/events — последние оповещения\n"
         "/anomaly — поиск всплесков событий\n"
+        "/label <id> <метка> — пометить событие\n"
+        "/forecast <itemid> [часов] — прогноз значения\n"
+
         "/help — показать эту справку"
     )
     await send_clean(msg.chat.id, text)
@@ -393,7 +428,15 @@ async def zabbix_alert(req: Request):
         f"📡 <b>{html.escape(subject)}</b>\n"
         f"{html.escape(clean_message)}"
     )
+
+    event_id = await storage.save_event(subject, clean_message)
+    label = await ml.predict_label(subject, clean_message)
+    if label:
+        await storage.update_label(event_id, label)
+        text += f"\nМетка: {html.escape(label)}"
+
     await storage.save_event(subject, clean_message)
+
     spike = await ml.check_latest_anomaly()
 
     for chat_id in ADMIN_CHAT_IDS:
@@ -407,6 +450,8 @@ async def zabbix_alert(req: Request):
 async def on_startup():
     await storage.init_db()
     await ml.train_model()
+    await ml.train_classifier()
+
     await bot.delete_webhook(drop_pending_updates=True)
     await bot.set_my_commands([
         types.BotCommand(command="status", description="Сводка проблем"),
@@ -415,6 +460,8 @@ async def on_startup():
         types.BotCommand(command="graph",  description="График метрики"),
         types.BotCommand(command="events", description="Последние события"),
         types.BotCommand(command="anomaly", description="Поиск всплесков"),
+        types.BotCommand(command="label", description="Пометить событие"),
+        types.BotCommand(command="forecast", description="Прогноз метрики"),
 
         types.BotCommand(command="help",   description="Справка"),
     ])

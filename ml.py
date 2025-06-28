@@ -1,4 +1,7 @@
+
+"""Simple ML helpers for the Zabbix bot."""
 """Simple anomaly detection over event frequency using IsolationForest."""
+
 
 import asyncio
 import datetime as _dt
@@ -9,10 +12,19 @@ from pathlib import Path
 
 import numpy as np
 from sklearn.ensemble import IsolationForest
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.pipeline import Pipeline
+from statsmodels.tsa.arima.model import ARIMA
+import storage
+import zbx
+
 
 
 DB_PATH = os.getenv("EVENTS_DB_PATH", "events.db")
 MODEL_PATH = Path(os.getenv("ML_MODEL_PATH", "model.pkl"))
+CLF_PATH = Path(os.getenv("ML_CLF_PATH", "classifier.pkl"))
+
 
 
 def _fetch_timestamps() -> list[str]:
@@ -66,4 +78,64 @@ async def check_latest_anomaly() -> bool:
             return False
     pred = model.predict(X[-1:])
     return int(pred[0]) == -1
+
+def _load_classifier() -> Pipeline | None:
+    if CLF_PATH.exists():
+        with CLF_PATH.open("rb") as f:
+            return pickle.load(f)
+    return None
+
+
+async def train_classifier() -> None:
+    rows = await storage.fetch_labeled()
+    if not rows:
+        return
+    texts = [r[0] for r in rows]
+    labels = [r[1] for r in rows]
+    if len(set(labels)) < 2:
+        return
+    pipeline = Pipeline([
+        ("tfidf", TfidfVectorizer()),
+        ("clf", MultinomialNB()),
+    ])
+    pipeline.fit(texts, labels)
+    with CLF_PATH.open("wb") as f:
+        pickle.dump(pipeline, f)
+
+
+async def predict_label(subject: str, message: str) -> str | None:
+    clf = _load_classifier()
+    if clf is None:
+        await train_classifier()
+        clf = _load_classifier()
+    if clf is None:
+        return None
+    text = f"{subject} {message}"
+    return str(clf.predict([text])[0])
+
+
+async def forecast_values(values: list[float], steps: int = 5) -> list[float]:
+    if len(values) < 3:
+        return []
+    model = ARIMA(values, order=(1, 1, 1))
+    res = model.fit()
+    forecast = res.forecast(steps=steps)
+    return forecast.tolist()
+
+
+async def forecast_item(itemid: int, hours: int = 1) -> list[float]:
+    end = int(_dt.datetime.now().timestamp())
+    start = end - hours * 3600
+    history = await zbx.call(
+        "history.get",
+        {
+            "history": 0,
+            "itemids": [itemid],
+            "time_from": start,
+            "time_till": end,
+            "output": "extend",
+        },
+    )
+    values = [float(h["value"]) for h in history]
+    return await forecast_values(values)
 

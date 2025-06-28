@@ -34,12 +34,24 @@ app = FastAPI()
 @dp.message(Command("status"))
 async def cmd_status(msg: types.Message):
     params = {
-        "output": ["name", "severity", "clock"],
-        "selectHosts": ["name"],
+        "output": ["eventid", "name", "severity", "clock"],
         "sortfield": "clock",
         "sortorder": "DESC",
     }
-    problems = await zbx.call("problem.get", params)
+    # Try requesting hosts directly; older Zabbix versions don't support it
+    problems = await zbx.call("problem.get", {**params, "selectHosts": ["name"]})
+    if not problems:
+        problems = await zbx.call("problem.get", params)
+        event_ids = [p["eventid"] for p in problems]
+        hosts_info = await zbx.call(
+            "event.get",
+            {"output": ["eventid"], "eventids": event_ids, "selectHosts": ["name"]},
+        )
+        host_map = {e["eventid"]: e.get("hosts", [{}])[0].get("name") for e in hosts_info}
+    else:
+        host_map = {
+            p["eventid"]: p.get("hosts", [{}])[0].get("name") for p in problems
+        }
 
     sev_map = {
         0: "Не классифицировано",
@@ -56,7 +68,7 @@ async def cmd_status(msg: types.Message):
         sev_name = sev_map[int(pr["severity"])]
         counts[sev_name] += 1
 
-        host = pr.get("hosts", [{}])[0].get("name", "?")
+        host = host_map.get(pr["eventid"], "?")
         clock = int(pr.get("clock", 0))
         ts = datetime.datetime.fromtimestamp(clock).strftime("%Y-%m-%d %H:%M")
         details.append(
@@ -74,7 +86,7 @@ async def cmd_status(msg: types.Message):
 @dp.message(Command("ping"))
 async def cmd_ping(msg: types.Message, command: Command):
     if not command.args:
-        return await msg.answer("Использование: /ping <host>")
+        return await msg.answer("Использование: /ping &lt;host&gt;")
     host = command.args.strip()
     proc = await asyncio.create_subprocess_exec(
         "ping", "-c", "4", host,
@@ -110,8 +122,8 @@ async def cmd_help(msg: types.Message):
     text = (
         "<b>📖 Список команд Phystech Zabbix Bot:</b>\n\n"
         "/status — сводка и список открытых проблем\n"
-        "/ping <host> — проверить доступность хоста\n"
-        "/graph <itemid> [минут] — построить график метрики\n"
+        "/ping &lt;host&gt; — проверить доступность хоста\n"
+        "/graph &lt;itemid&gt; [минут] — построить график метрики\n"
         "/help — показать эту справку"
     )
     await msg.answer(text)

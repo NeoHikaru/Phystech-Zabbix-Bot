@@ -1,6 +1,7 @@
 import os
 import httpx
 import functools
+from typing import Optional
 
 ZBX_URL = os.getenv("ZABBIX_URL")
 ZBX_USER = os.getenv("ZABBIX_USER")
@@ -14,7 +15,7 @@ ZBX_VERIFY_SSL = os.getenv("ZABBIX_VERIFY_SSL", "true").lower() in (
 
 
 @functools.lru_cache()
-def get_token() -> str | None:
+def get_token() -> Optional[str]:
     """Retrieve API token or login using credentials."""
     if ZBX_TOKEN:
         return ZBX_TOKEN
@@ -42,7 +43,7 @@ def get_token() -> str | None:
 
 
 @functools.lru_cache()
-def get_session() -> str | None:
+def get_session() -> Optional[str]:
     """Return a web session ID using username/password if available."""
     if not (ZBX_USER and ZBX_PASS):
         return None

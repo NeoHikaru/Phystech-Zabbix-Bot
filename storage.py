@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import asyncio
+from typing import List, Tuple, Optional
 
 DB_PATH = os.getenv("EVENTS_DB_PATH", "events.db")
 
@@ -12,14 +13,12 @@ def _init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
                 subject TEXT,
-
                 message TEXT,
                 label TEXT
             )
             """
         )
         con.commit()
-
 
 def _save_event(subject: str, message: str) -> int:
     with sqlite3.connect(DB_PATH) as con:
@@ -48,27 +47,17 @@ async def update_label(event_id: int, label: str) -> None:
     await asyncio.to_thread(_update_label, event_id, label)
 
 
-def _fetch_events(limit: int) -> list[tuple[int, str, str, str | None]]:
+def _fetch_events(limit: int) -> List[Tuple[int, str, str, Optional[str]]]:
     with sqlite3.connect(DB_PATH) as con:
         cur = con.execute(
             "SELECT id, timestamp, subject, message, label FROM events"
-
-async def save_event(subject: str, message: str) -> None:
-    await asyncio.to_thread(_save_event, subject, message)
-
-
-def _fetch_events(limit: int) -> list[tuple[str, str, str]]:
-    with sqlite3.connect(DB_PATH) as con:
-        cur = con.execute(
-            "SELECT timestamp, subject, message FROM events"
             " ORDER BY id DESC LIMIT ?",
             (limit,),
         )
         return cur.fetchall()
 
 
-
-async def fetch_events(limit: int = 5) -> list[tuple[int, str, str, str | None]]:
+async def fetch_events(limit: int = 5) -> List[Tuple[int, str, str, Optional[str]]]:
     return await asyncio.to_thread(_fetch_events, limit)
 
 
@@ -82,7 +71,3 @@ def _fetch_labeled() -> list[tuple[str, str]]:
 
 async def fetch_labeled() -> list[tuple[str, str]]:
     return await asyncio.to_thread(_fetch_labeled)
-
-async def fetch_events(limit: int = 5) -> list[tuple[str, str, str]]:
-    return await asyncio.to_thread(_fetch_events, limit)
-

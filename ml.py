@@ -1,7 +1,4 @@
-
 """Simple ML helpers for the Zabbix bot."""
-"""Simple anomaly detection over event frequency using IsolationForest."""
-
 
 import asyncio
 import datetime as _dt
@@ -9,6 +6,7 @@ import os
 import pickle
 import sqlite3
 from pathlib import Path
+from typing import List, Tuple, Optional
 
 import numpy as np
 from sklearn.ensemble import IsolationForest
@@ -16,15 +14,14 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
 from statsmodels.tsa.arima.model import ARIMA
+
 import storage
 import zbx
-
 
 
 DB_PATH = os.getenv("EVENTS_DB_PATH", "events.db")
 MODEL_PATH = Path(os.getenv("ML_MODEL_PATH", "model.pkl"))
 CLF_PATH = Path(os.getenv("ML_CLF_PATH", "classifier.pkl"))
-
 
 
 def _fetch_timestamps() -> list[str]:
@@ -59,7 +56,7 @@ async def train_model() -> None:
         pickle.dump(model, f)
 
 
-def _load_model() -> IsolationForest | None:
+def _load_model() -> Optional[IsolationForest]:
     if MODEL_PATH.exists():
         with MODEL_PATH.open("rb") as f:
             return pickle.load(f)
@@ -79,7 +76,8 @@ async def check_latest_anomaly() -> bool:
     pred = model.predict(X[-1:])
     return int(pred[0]) == -1
 
-def _load_classifier() -> Pipeline | None:
+
+def _load_classifier() -> Optional[Pipeline]:
     if CLF_PATH.exists():
         with CLF_PATH.open("rb") as f:
             return pickle.load(f)
@@ -103,7 +101,7 @@ async def train_classifier() -> None:
         pickle.dump(pipeline, f)
 
 
-async def predict_label(subject: str, message: str) -> str | None:
+async def predict_label(subject: str, message: str) -> Optional[str]:
     clf = _load_classifier()
     if clf is None:
         await train_classifier()
@@ -138,4 +136,3 @@ async def forecast_item(itemid: int, hours: int = 1) -> list[float]:
     )
     values = [float(h["value"]) for h in history]
     return await forecast_values(values)
-

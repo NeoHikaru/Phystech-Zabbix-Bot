@@ -151,7 +151,7 @@ async def cmd_anomaly(msg: types.Message):
 async def cmd_label(msg: types.Message, command: Command):
     parts = (command.args or "").split(maxsplit=1)
     if len(parts) != 2 or not parts[0].isdigit():
-        return await send_clean(msg.chat.id, "Использование: /label <id> <метка>")
+        return await send_clean(msg.chat.id, "Использование: /label &lt;id&gt; &lt;метка&gt;")
     event_id = int(parts[0])
     label = parts[1]
     await storage.update_label(event_id, label)
@@ -163,7 +163,7 @@ async def cmd_label(msg: types.Message, command: Command):
 async def cmd_forecast(msg: types.Message, command: Command):
     parts = (command.args or "").split()
     if not parts or not parts[0].isdigit():
-        return await send_clean(msg.chat.id, "Использование: /forecast <itemid> [часов]")
+        return await send_clean(msg.chat.id, "Использование: /forecast &lt;itemid&gt; [часов]")
     itemid = int(parts[0])
     hours = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
     await send_clean(msg.chat.id, "⏳ Прогнозирование…")
@@ -186,8 +186,8 @@ async def cmd_help(msg: types.Message):
         "/graph &lt;itemid&gt; [минут] — построить график метрики\n"
         "/events — последние оповещения\n"
         "/anomaly — поиск всплесков событий\n"
-        "/label <id> <метка> — пометить событие\n"
-        "/forecast <itemid> [часов] — прогноз значения\n"
+        "/label &lt;id&gt; &lt;метка&gt; — пометить событие\n"
+        "/forecast &lt;itemid&gt; [часов] — прогноз значения\n"
         "/help — показать эту справку"
     )
     await send_clean(msg.chat.id, text)

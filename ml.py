@@ -136,4 +136,3 @@ async def forecast_item(itemid: int, hours: int = 1) -> list[float]:
     )
     values = [float(h["value"]) for h in history]
     return await forecast_values(values)
-

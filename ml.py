@@ -6,7 +6,7 @@ import os
 import pickle
 import sqlite3
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Optional
 
 import numpy as np
 from sklearn.ensemble import IsolationForest
@@ -24,17 +24,17 @@ MODEL_PATH = Path(os.getenv("ML_MODEL_PATH", "model.pkl"))
 CLF_PATH = Path(os.getenv("ML_CLF_PATH", "classifier.pkl"))
 
 
-def _fetch_timestamps() -> list[str]:
+def _fetch_timestamps() -> List[str]:
     with sqlite3.connect(DB_PATH) as con:
         cur = con.execute("SELECT timestamp FROM events")
         return [row[0] for row in cur.fetchall()]
 
 
-async def fetch_timestamps() -> list[str]:
+async def fetch_timestamps() -> List[str]:
     return await asyncio.to_thread(_fetch_timestamps)
 
 
-def _hourly_counts(rows: list[str]) -> np.ndarray:
+def _hourly_counts(rows: List[str]) -> np.ndarray:
     counts: dict[_dt.datetime, int] = {}
     for ts in rows:
         dt = _dt.datetime.fromisoformat(ts)
@@ -112,7 +112,7 @@ async def predict_label(subject: str, message: str) -> Optional[str]:
     return str(clf.predict([text])[0])
 
 
-async def forecast_values(values: list[float], steps: int = 5) -> list[float]:
+async def forecast_values(values: List[float], steps: int = 5) -> List[float]:
     if len(values) < 3:
         return []
     model = ARIMA(values, order=(1, 1, 1))
@@ -121,7 +121,7 @@ async def forecast_values(values: list[float], steps: int = 5) -> list[float]:
     return forecast.tolist()
 
 
-async def forecast_item(itemid: int, hours: int = 1) -> list[float]:
+async def forecast_item(itemid: int, hours: int = 1) -> List[float]:
     end = int(_dt.datetime.now().timestamp())
     start = end - hours * 3600
     history = await zbx.call(

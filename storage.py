@@ -61,7 +61,7 @@ async def fetch_events(limit: int = 5) -> List[Tuple[int, str, str, Optional[str
     return await asyncio.to_thread(_fetch_events, limit)
 
 
-def _fetch_labeled() -> list[tuple[str, str]]:
+def _fetch_labeled() -> List[Tuple[str, str]]:
     with sqlite3.connect(DB_PATH) as con:
         cur = con.execute(
             "SELECT subject || ' ' || message, label FROM events WHERE label IS NOT NULL"
@@ -69,5 +69,5 @@ def _fetch_labeled() -> list[tuple[str, str]]:
         return cur.fetchall()
 
 
-async def fetch_labeled() -> list[tuple[str, str]]:
+async def fetch_labeled() -> List[Tuple[str, str]]:
     return await asyncio.to_thread(_fetch_labeled)

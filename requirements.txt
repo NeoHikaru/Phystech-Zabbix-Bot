@@ -3,3 +3,5 @@ uvicorn[standard]==0.29.0
 aiogram==3.6.0
 python-dotenv==1.0.1
 matplotlib
+scikit-learn==1.4.2
+statsmodels==0.14.1
